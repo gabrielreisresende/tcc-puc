@@ -1,0 +1,9 @@
+# Exemplo de configuração do backend remoto.
+# Copie para backend.hcl (não versionado) e execute:
+#   terraform init -backend-config=backend.hcl
+
+bucket         = "seu-bucket-terraform-state"
+key            = "tcc/lambda-benchmark/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-state-lock"
+encrypt        = true

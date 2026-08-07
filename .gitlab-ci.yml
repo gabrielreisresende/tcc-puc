@@ -1,0 +1,269 @@
+# =============================================================================
+# Pipeline CI/CD — TCC Lambda Benchmark (Go + Quarkus + Terraform)
+# =============================================================================
+#
+# Estágios:
+#   validate → build → plan → apply
+#
+# ---------------------------------------------------------------------------
+# Como cadastrar variáveis no GitLab (Settings > CI/CD > Variables)
+# ---------------------------------------------------------------------------
+#
+# Obrigatórias (credenciais AWS — marque "Masked" e "Protected"):
+#   AWS_ACCESS_KEY_ID      — Access Key IAM com permissão para Lambda, DynamoDB,
+#                          S3 (backend), IAM e CloudWatch.
+#   AWS_SECRET_ACCESS_KEY  — Secret Key correspondente.
+#   AWS_DEFAULT_REGION     — Região AWS (ex: us-east-1). Usada pelo SDK e pelo
+#                          Terraform via TF_VAR_aws_region.
+#
+# Backend remoto do Terraform (Protected recomendado):
+#   TF_STATE_BUCKET        — Bucket S3 do tfstate (ex: meu-bucket-terraform-state).
+#   TF_STATE_KEY           — Caminho do state (ex: tcc/lambda-benchmark/terraform.tfstate).
+#   TF_STATE_DYNAMODB_TABLE — Tabela DynamoDB para lock (ex: terraform-state-lock).
+#
+# Configuração do ambiente (opcionais — valores padrão abaixo):
+#   TF_VAR_environment          — Ambiente (padrão: dev).
+#   TF_VAR_project_name         — Prefixo dos recursos (padrão: tcc-lambda-benchmark).
+#   TF_VAR_dynamodb_table_name  — Nome da tabela DynamoDB (padrão: tcc-benchmark-io).
+#   TF_VAR_log_retention_days   — Retenção CloudWatch em dias (padrão: 7).
+#   LAMBDA_ARCHITECTURE         — x86_64 ou arm64 (padrão: x86_64).
+#
+# Observação: runners com build Quarkus nativo precisam suportar Docker-in-Docker
+# (serviço docker:dind, modo privileged quando exigido pelo runner).
+# =============================================================================
+
+stages:
+  - validate
+  - build
+  - plan
+  - apply
+
+# ---------------------------------------------------------------------------
+# Variáveis globais
+# ---------------------------------------------------------------------------
+variables:
+  TF_ROOT: terraform
+  TF_IN_AUTOMATION: "true"
+  BUILD_DIR: build
+  GO_VERSION: "1.22"
+  # Arquitetura alvo das Lambdas (deve coincidir com lambda_architectures no Terraform)
+  LAMBDA_ARCHITECTURE: "x86_64"
+  # Caminhos dos módulos de aplicação (ajuste se a estrutura do repositório mudar)
+  GO_APP_ROOT: apps/go
+  QUARKUS_APP_ROOT: apps/quarkus
+
+# Regras de execução compartilhadas
+.rules_validate_build_plan: &rules_validate_build_plan
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+.rules_main_apply: &rules_main_apply
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# Template: credenciais AWS + variáveis Terraform derivadas do ambiente
+.aws_terraform_setup: &aws_terraform_setup
+  before_script:
+    - export TF_VAR_aws_region="${AWS_DEFAULT_REGION}"
+    - export TF_VAR_environment="${TF_VAR_environment:-dev}"
+    - export TF_VAR_project_name="${TF_VAR_project_name:-tcc-lambda-benchmark}"
+    - export TF_VAR_dynamodb_table_name="${TF_VAR_dynamodb_table_name:-tcc-benchmark-io}"
+    - export TF_VAR_lambda_runtime="provided.al2023"
+    - export TF_VAR_log_retention_days="${TF_VAR_log_retention_days:-7}"
+    - |
+      export TF_VAR_lambda_architectures='["'"${LAMBDA_ARCHITECTURE}"'"]'
+      export TF_VAR_lambda_deployment_packages='{
+        "go-cpu": "../build/go/cpu/bootstrap.zip",
+        "go-concurrency": "../build/go/concurrency/bootstrap.zip",
+        "go-io": "../build/go/io/bootstrap.zip",
+        "quarkus-cpu": "../build/quarkus/cpu/function.zip",
+        "quarkus-concurrency": "../build/quarkus/concurrency/function.zip",
+        "quarkus-io": "../build/quarkus/io/function.zip"
+      }'
+
+# =============================================================================
+# ESTÁGIO: validate
+# =============================================================================
+
+terraform-fmt:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  <<: *rules_validate_build_plan
+  script:
+    - terraform -chdir="${TF_ROOT}" fmt -check -recursive -diff
+  allow_failure: false
+
+terraform-validate:
+  stage: validate
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+  <<: *rules_validate_build_plan
+  script:
+    - terraform -chdir="${TF_ROOT}" init -backend=false
+    - terraform -chdir="${TF_ROOT}" validate
+
+# =============================================================================
+# ESTÁGIO: build
+# =============================================================================
+
+.build_go_template: &build_go_template
+  stage: build
+  image: golang:${GO_VERSION}
+  <<: *rules_validate_build_plan
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq zip
+    - |
+      case "${LAMBDA_ARCHITECTURE}" in
+        arm64)  export GOARCH=arm64 ;;
+        x86_64) export GOARCH=amd64 ;;
+        *) echo "LAMBDA_ARCHITECTURE inválida: ${LAMBDA_ARCHITECTURE}" && exit 1 ;;
+      esac
+    - export GOOS=linux CGO_ENABLED=0
+    - export OUT_DIR="${CI_PROJECT_DIR}/${BUILD_DIR}/go/${SCENARIO}"
+    - mkdir -p "${OUT_DIR}"
+  script:
+    - cd "${CI_PROJECT_DIR}/${GO_APP_ROOT}/${SCENARIO}"
+    - go mod download
+    - go build -trimpath -ldflags="-s -w" -tags lambda.norpc -o "${OUT_DIR}/bootstrap" .
+    - cd "${OUT_DIR}"
+    - zip -j bootstrap.zip bootstrap
+  artifacts:
+    name: "go-${SCENARIO}-${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - build/go/${SCENARIO}/bootstrap.zip
+
+build-go-cpu:
+  <<: *build_go_template
+  variables:
+    SCENARIO: cpu
+
+build-go-concurrency:
+  <<: *build_go_template
+  variables:
+    SCENARIO: concurrency
+
+build-go-io:
+  <<: *build_go_template
+  variables:
+    SCENARIO: io
+
+.build_quarkus_template: &build_quarkus_template
+  stage: build
+  image: quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-21
+  services:
+    - name: docker:24-dind
+      alias: docker
+  <<: *rules_validate_build_plan
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    MAVEN_OPTS: "-Dmaven.repo.local=${CI_PROJECT_DIR}/.m2/repository"
+  before_script:
+    - export OUT_DIR="${CI_PROJECT_DIR}/${BUILD_DIR}/quarkus/${SCENARIO}"
+    - mkdir -p "${OUT_DIR}"
+  script:
+    - cd "${CI_PROJECT_DIR}/${QUARKUS_APP_ROOT}/${SCENARIO}"
+    - ./mvnw -B package -Pnative -DskipTests -Dquarkus.native.container-build=true -Dquarkus.native.container-runtime=docker
+    - |
+      ZIP="$(find target -maxdepth 1 -name 'function.zip' -o -name '*-runner.zip' | head -1)"
+      if [ -z "${ZIP}" ]; then
+        echo "Artefato ZIP nativo não encontrado em target/. Verifique a extensão quarkus-amazon-lambda."
+        exit 1
+      fi
+      cp "${ZIP}" "${OUT_DIR}/function.zip"
+  cache:
+    key: "maven-${SCENARIO}"
+    paths:
+      - .m2/repository
+  artifacts:
+    name: "quarkus-${SCENARIO}-${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - build/quarkus/${SCENARIO}/function.zip
+
+build-quarkus-cpu:
+  <<: *build_quarkus_template
+  variables:
+    SCENARIO: cpu
+
+build-quarkus-concurrency:
+  <<: *build_quarkus_template
+  variables:
+    SCENARIO: concurrency
+
+build-quarkus-io:
+  <<: *build_quarkus_template
+  variables:
+    SCENARIO: io
+
+# =============================================================================
+# ESTÁGIO: plan
+# =============================================================================
+
+.terraform_image: &terraform_image
+  image:
+    name: hashicorp/terraform:1.9
+    entrypoint: [""]
+
+terraform-plan:
+  <<: [*terraform_image, *rules_validate_build_plan, *aws_terraform_setup]
+  stage: plan
+  needs:
+    - job: terraform-validate
+    - job: build-go-cpu
+      artifacts: true
+    - job: build-go-concurrency
+      artifacts: true
+    - job: build-go-io
+      artifacts: true
+    - job: build-quarkus-cpu
+      artifacts: true
+    - job: build-quarkus-concurrency
+      artifacts: true
+    - job: build-quarkus-io
+      artifacts: true
+  script:
+    - |
+      terraform -chdir="${TF_ROOT}" init \
+        -backend-config="bucket=${TF_STATE_BUCKET}" \
+        -backend-config="key=${TF_STATE_KEY:-tcc/lambda-benchmark/terraform.tfstate}" \
+        -backend-config="region=${AWS_DEFAULT_REGION}" \
+        -backend-config="dynamodb_table=${TF_STATE_DYNAMODB_TABLE}" \
+        -backend-config="encrypt=true"
+    - terraform -chdir="${TF_ROOT}" plan -input=false -out="${CI_PROJECT_DIR}/tfplan"
+    - terraform -chdir="${TF_ROOT}" show -no-color "${CI_PROJECT_DIR}/tfplan" > "${CI_PROJECT_DIR}/tfplan.txt"
+  artifacts:
+    name: "terraform-plan-${CI_COMMIT_SHORT_SHA}"
+    expire_in: 1 week
+    paths:
+      - tfplan
+      - tfplan.txt
+      - build/
+
+# =============================================================================
+# ESTÁGIO: apply — apenas branch main (push ou merge)
+# =============================================================================
+
+terraform-apply:
+  <<: [*terraform_image, *rules_main_apply, *aws_terraform_setup]
+  stage: apply
+  needs:
+    - job: terraform-plan
+      artifacts: true
+  script:
+    - |
+      terraform -chdir="${TF_ROOT}" init \
+        -backend-config="bucket=${TF_STATE_BUCKET}" \
+        -backend-config="key=${TF_STATE_KEY:-tcc/lambda-benchmark/terraform.tfstate}" \
+        -backend-config="region=${AWS_DEFAULT_REGION}" \
+        -backend-config="dynamodb_table=${TF_STATE_DYNAMODB_TABLE}" \
+        -backend-config="encrypt=true"
+    - terraform -chdir="${TF_ROOT}" apply -input=false -auto-approve "${CI_PROJECT_DIR}/tfplan"
+  environment:
+    name: production
+    action: start

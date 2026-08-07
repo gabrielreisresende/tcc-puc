@@ -1,0 +1,53 @@
+# Copie este arquivo para terraform.tfvars e ajuste os valores.
+# Variáveis sensíveis ou específicas do ambiente também podem ser exportadas:
+#   export TF_VAR_aws_region="us-east-1"
+#   export TF_VAR_environment="dev"
+
+aws_region   = "us-east-1"
+environment  = "dev"
+project_name = "tcc-lambda-benchmark"
+
+# Tabela DynamoDB para o cenário de I/O (On-Demand)
+dynamodb_table_name = "tcc-benchmark-io"
+
+# Configuração compartilhada das Lambdas
+lambda_runtime       = "provided.al2023"
+lambda_architectures = ["x86_64"]
+
+# Memória padrão (MB) — sobrescreva por função em lambda_memory_sizes se necessário
+lambda_default_memory_size = 512
+lambda_default_timeout     = 30
+lambda_default_handler     = "bootstrap"
+
+# Memória por cenário (opcional — útil para testes de cold start e custo)
+# lambda_memory_sizes = {
+#   go-cpu              = 512
+#   go-concurrency      = 1024
+#   go-io               = 512
+#   quarkus-cpu         = 512
+#   quarkus-concurrency = 1024
+#   quarkus-io          = 512
+# }
+
+# Retenção dos logs CloudWatch (dias)
+log_retention_days = 7
+
+# ---------------------------------------------------------------------------
+# Caminhos dos pacotes .zip — substitua pelos artefatos gerados pelo build.
+# Os arquivos devem existir antes de rodar terraform apply.
+# ---------------------------------------------------------------------------
+lambda_deployment_packages = {
+  go-cpu              = "../build/go/cpu/bootstrap.zip"
+  go-concurrency      = "../build/go/concurrency/bootstrap.zip"
+  go-io               = "../build/go/io/bootstrap.zip"
+  quarkus-cpu         = "../build/quarkus/cpu/function.zip"
+  quarkus-concurrency = "../build/quarkus/concurrency/function.zip"
+  quarkus-io          = "../build/quarkus/io/function.zip"
+}
+
+# Variáveis de ambiente extras por função (opcional)
+# lambda_environment_variables = {
+#   go-cpu = {
+#     PRIME_LIMIT = "1000000"
+#   }
+# }
