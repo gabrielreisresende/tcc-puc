@@ -1,0 +1,303 @@
+# =============================================================================
+# Pipeline CI/CD — TCC Lambda Benchmark (Go + Quarkus + Terraform)
+# =============================================================================
+#
+# Fluxo:
+#   validate-and-lint → build-go / build-quarkus-native → terraform-plan-apply
+#
+# Gatilhos:
+#   - pull_request para "main": valida, builda e roda `terraform plan`.
+#   - push em "main": roda o fluxo completo e aplica `terraform apply`
+#     automaticamente (auto-approve).
+#
+# ---------------------------------------------------------------------------
+# Como cadastrar as Secret Variables no GitHub
+# (Settings > Secrets and variables > Actions > New repository secret)
+# ---------------------------------------------------------------------------
+#
+# Obrigatórias:
+#   AWS_ACCESS_KEY_ID       — Access Key IAM com permissão para Lambda,
+#                              DynamoDB, S3 (backend), IAM e CloudWatch.
+#   AWS_SECRET_ACCESS_KEY   — Secret Key correspondente.
+#   AWS_REGION              — Região AWS (ex: us-east-1).
+#
+# Backend remoto do Terraform:
+#   TF_STATE_BUCKET          — Bucket S3 do tfstate.
+#   TF_STATE_KEY             — Caminho do state
+#                               (ex: tcc/lambda-benchmark/terraform.tfstate).
+#   TF_STATE_DYNAMODB_TABLE  — Tabela DynamoDB usada para lock do state.
+#
+# Opcionais (podem ser cadastradas como Secrets ou Variables — se ausentes,
+# os valores padrão abaixo são usados):
+#   TF_VAR_ENVIRONMENT           — Ambiente (padrão: dev).
+#   TF_VAR_PROJECT_NAME          — Prefixo dos recursos
+#                                   (padrão: tcc-lambda-benchmark).
+#   TF_VAR_DYNAMODB_TABLE_NAME   — Nome da tabela DynamoDB
+#                                   (padrão: tcc-benchmark-io).
+#   TF_VAR_LOG_RETENTION_DAYS    — Retenção CloudWatch em dias (padrão: 7).
+#   LAMBDA_ARCHITECTURE          — x86_64 ou arm64 (padrão: x86_64).
+#
+# NENHUMA credencial ou variável sensível deve ser hardcoded neste arquivo.
+# =============================================================================
+
+name: Deploy TCC Lambda Benchmark
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  TF_ROOT: terraform
+  TF_IN_AUTOMATION: "true"
+  BUILD_DIR: build
+  GO_VERSION: "1.22"
+  # Arquitetura alvo das Lambdas (deve coincidir com lambda_architectures no Terraform)
+  LAMBDA_ARCHITECTURE: ${{ vars.LAMBDA_ARCHITECTURE || 'x86_64' }}
+  # Caminhos dos módulos de aplicação (ajuste se a estrutura do repositório mudar)
+  GO_APP_ROOT: apps/go
+  QUARKUS_APP_ROOT: apps/quarkus
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # JOB 1: validate-and-lint
+  # ===========================================================================
+  validate-and-lint:
+    name: Validate & Lint Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configuração do Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.*"
+
+      - name: terraform init (sem backend, apenas para validação)
+        working-directory: ${{ env.TF_ROOT }}
+        run: terraform init -backend=false
+
+      - name: terraform fmt -check
+        working-directory: ${{ env.TF_ROOT }}
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform validate
+        working-directory: ${{ env.TF_ROOT }}
+        run: terraform validate
+
+  # ===========================================================================
+  # JOB 2: build-go — compila os 3 cenários Go (CPU, Concorrência, I/O)
+  # ===========================================================================
+  build-go:
+    name: Build Go (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scenario: [cpu, concurrency, io]
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup do Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Definir GOARCH a partir de LAMBDA_ARCHITECTURE
+        run: |
+          case "${LAMBDA_ARCHITECTURE}" in
+            arm64)  echo "GOARCH=arm64" >> "$GITHUB_ENV" ;;
+            x86_64) echo "GOARCH=amd64" >> "$GITHUB_ENV" ;;
+            *) echo "LAMBDA_ARCHITECTURE inválida: ${LAMBDA_ARCHITECTURE}" && exit 1 ;;
+          esac
+          echo "GOOS=linux" >> "$GITHUB_ENV"
+          echo "CGO_ENABLED=0" >> "$GITHUB_ENV"
+
+      # Compilação do cenário Go para a arquitetura alvo (Linux/arm64 ou x86_64),
+      # gerando o executável `bootstrap` exigido pelo runtime provided.al2023.
+      - name: Compilar binário Go (bootstrap)
+        working-directory: ${{ env.GO_APP_ROOT }}/${{ matrix.scenario }}
+        run: |
+          OUT_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}/go/${{ matrix.scenario }}"
+          mkdir -p "${OUT_DIR}"
+          go mod download
+          go build -trimpath -ldflags="-s -w" -tags lambda.norpc -o "${OUT_DIR}/bootstrap" .
+
+      # Empacotamento do binário em arquivo .zip
+      - name: Empacotar bootstrap.zip
+        run: |
+          cd "${GITHUB_WORKSPACE}/${BUILD_DIR}/go/${{ matrix.scenario }}"
+          zip -j bootstrap.zip bootstrap
+
+      - name: Upload do artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-${{ matrix.scenario }}-${{ github.sha }}
+          path: build/go/${{ matrix.scenario }}/bootstrap.zip
+          retention-days: 7
+
+  # ===========================================================================
+  # JOB 3: build-quarkus-native — compila os 3 cenários Quarkus (AOT/GraalVM)
+  # ===========================================================================
+  build-quarkus-native:
+    name: Build Quarkus Native (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scenario: [cpu, concurrency, io]
+    # Suporte a Container/Docker para o build nativo com Mandrel Builder image.
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup do Docker Buildx (necessário para o build nativo em container)
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache do repositório Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ matrix.scenario }}-${{ hashFiles(format('{0}/{1}/pom.xml', env.QUARKUS_APP_ROOT, matrix.scenario)) }}
+          restore-keys: |
+            maven-${{ matrix.scenario }}-
+
+      # Compilação nativa Ahead-Of-Time (AOT) do Quarkus via GraalVM Mandrel
+      # Builder image, usando Docker para não exigir GraalVM local no runner.
+      - name: Build nativo (Quarkus + GraalVM Mandrel)
+        working-directory: ${{ env.QUARKUS_APP_ROOT }}/${{ matrix.scenario }}
+        run: |
+          ./mvnw -B package -Pnative -DskipTests \
+            -Dquarkus.native.container-build=true \
+            -Dquarkus.native.container-runtime=docker
+
+      - name: Localizar e empacotar function.zip
+        run: |
+          OUT_DIR="${GITHUB_WORKSPACE}/${BUILD_DIR}/quarkus/${{ matrix.scenario }}"
+          mkdir -p "${OUT_DIR}"
+          cd "${GITHUB_WORKSPACE}/${QUARKUS_APP_ROOT}/${{ matrix.scenario }}"
+          ZIP="$(find target -maxdepth 1 -name 'function.zip' -o -name '*-runner.zip' | head -1)"
+          if [ -z "${ZIP}" ]; then
+            echo "Artefato ZIP nativo não encontrado em target/. Verifique a extensão quarkus-amazon-lambda."
+            exit 1
+          fi
+          cp "${ZIP}" "${OUT_DIR}/function.zip"
+
+      - name: Upload do artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: quarkus-${{ matrix.scenario }}-${{ github.sha }}
+          path: build/quarkus/${{ matrix.scenario }}/function.zip
+          retention-days: 7
+
+  # ===========================================================================
+  # JOB 4: terraform-plan-apply
+  # ===========================================================================
+  terraform-plan-apply:
+    name: Terraform Plan & Apply
+    runs-on: ubuntu-latest
+    needs: [validate-and-lint, build-go, build-quarkus-native]
+    environment: production
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # Download de todos os artefatos .zip para o diretório esperado pelo Terraform.
+      - name: Download artefato go-cpu
+        uses: actions/download-artifact@v4
+        with:
+          name: go-cpu-${{ github.sha }}
+          path: build/go/cpu
+
+      - name: Download artefato go-concurrency
+        uses: actions/download-artifact@v4
+        with:
+          name: go-concurrency-${{ github.sha }}
+          path: build/go/concurrency
+
+      - name: Download artefato go-io
+        uses: actions/download-artifact@v4
+        with:
+          name: go-io-${{ github.sha }}
+          path: build/go/io
+
+      - name: Download artefato quarkus-cpu
+        uses: actions/download-artifact@v4
+        with:
+          name: quarkus-cpu-${{ github.sha }}
+          path: build/quarkus/cpu
+
+      - name: Download artefato quarkus-concurrency
+        uses: actions/download-artifact@v4
+        with:
+          name: quarkus-concurrency-${{ github.sha }}
+          path: build/quarkus/concurrency
+
+      - name: Download artefato quarkus-io
+        uses: actions/download-artifact@v4
+        with:
+          name: quarkus-io-${{ github.sha }}
+          path: build/quarkus/io
+
+      # Autenticação na AWS utilizando aws-actions/configure-aws-credentials.
+      # As credenciais SEMPRE vêm de GitHub Secrets — nunca hardcoded.
+      - name: Autenticação AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Configuração do Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.*"
+
+      - name: Definir variáveis do Terraform derivadas do ambiente
+        run: |
+          echo "TF_VAR_aws_region=${{ secrets.AWS_REGION }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_environment=${{ vars.TF_VAR_ENVIRONMENT || 'dev' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_project_name=${{ vars.TF_VAR_PROJECT_NAME || 'tcc-lambda-benchmark' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_dynamodb_table_name=${{ vars.TF_VAR_DYNAMODB_TABLE_NAME || 'tcc-benchmark-io' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_lambda_runtime=provided.al2023" >> "$GITHUB_ENV"
+          echo "TF_VAR_log_retention_days=${{ vars.TF_VAR_LOG_RETENTION_DAYS || '7' }}" >> "$GITHUB_ENV"
+          echo 'TF_VAR_lambda_architectures=["'"${LAMBDA_ARCHITECTURE}"'"]' >> "$GITHUB_ENV"
+          cat >> "$GITHUB_ENV" <<'EOF'
+          TF_VAR_lambda_deployment_packages={"go-cpu": "../build/go/cpu/bootstrap.zip", "go-concurrency": "../build/go/concurrency/bootstrap.zip", "go-io": "../build/go/io/bootstrap.zip", "quarkus-cpu": "../build/quarkus/cpu/function.zip", "quarkus-concurrency": "../build/quarkus/concurrency/function.zip", "quarkus-io": "../build/quarkus/io/function.zip"}
+          EOF
+
+      - name: terraform init
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY || 'tcc/lambda-benchmark/terraform.tfstate' }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_STATE_DYNAMODB_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: terraform plan
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          terraform plan -input=false -out="${GITHUB_WORKSPACE}/tfplan"
+          terraform show -no-color "${GITHUB_WORKSPACE}/tfplan" > "${GITHUB_WORKSPACE}/tfplan.txt"
+
+      - name: Upload do plano Terraform
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.sha }}
+          path: |
+            tfplan
+            tfplan.txt
+          retention-days: 7
+
+      # Execução automática do terraform apply -auto-approve APENAS se o
+      # evento for um push na branch main.
+      - name: terraform apply (somente push em main)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: ${{ env.TF_ROOT }}
+        run: terraform apply -input=false -auto-approve "${GITHUB_WORKSPACE}/tfplan"
