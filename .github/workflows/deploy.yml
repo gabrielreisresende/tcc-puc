@@ -159,9 +159,9 @@ jobs:
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'corretto'
-          cache: 'maven'
+          java-version: "21"
+          distribution: "corretto"
+          cache: "maven"
       # ---------------------------
 
       - name: Setup do Docker Buildx (necessário para o build nativo em container)
@@ -261,6 +261,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: github-actions-terraform-${{ github.run_id }}
+          audience: sts.amazonaws.com
 
       - name: Configuração do Terraform
         uses: hashicorp/setup-terraform@v3
