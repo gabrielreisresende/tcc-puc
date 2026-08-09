@@ -102,7 +102,7 @@ variable "lambda_deployment_packages" {
       quarkus-concurrency -> "../build/quarkus/concurrency/function.zip"
       quarkus-io          -> "../build/quarkus/io/function.zip"
   EOT
-  type = map(string)
+  type        = map(string)
 
   validation {
     condition = alltrue([

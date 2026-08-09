@@ -20,11 +20,11 @@ output "lambda_functions" {
   description = "Mapa com nome, ARN e invoke_arn de cada função Lambda."
   value = {
     for key, fn in module.lambda : key => {
-      name        = fn.function_name
-      arn         = fn.function_arn
-      invoke_arn  = fn.function_invoke_arn
-      role_arn    = fn.role_arn
-      log_group   = fn.log_group_name
+      name       = fn.function_name
+      arn        = fn.function_arn
+      invoke_arn = fn.function_invoke_arn
+      role_arn   = fn.role_arn
+      log_group  = fn.log_group_name
     }
   }
 }
