@@ -144,8 +144,8 @@ resource "aws_lambda_function" "this" {
   ]
 
   tags = merge(var.tags, {
-    Name           = var.function_name
-    RuntimeFamily  = var.runtime_family
+    Name              = var.function_name
+    RuntimeFamily     = var.runtime_family
     BenchmarkScenario = var.scenario
   })
 }
