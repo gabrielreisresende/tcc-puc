@@ -155,6 +155,15 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
+        # --- ADICIONE ESTE BLOCO ---
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+          cache: 'maven'
+      # ---------------------------
+
       - name: Setup do Docker Buildx (necessário para o build nativo em container)
         uses: docker/setup-buildx-action@v3
 
