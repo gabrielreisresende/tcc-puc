@@ -210,7 +210,6 @@ jobs:
     name: Terraform Plan & Apply
     runs-on: ubuntu-latest
     needs: [validate-and-lint, build-go, build-quarkus-native]
-    environment: production
     permissions:
       id-token: write
       contents: read
@@ -261,7 +260,6 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
           role-session-name: github-actions-terraform-${{ github.run_id }}
-          audience: sts.amazonaws.com
 
       - name: Configuração do Terraform
         uses: hashicorp/setup-terraform@v3
