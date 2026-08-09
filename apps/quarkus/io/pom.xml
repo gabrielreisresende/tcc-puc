@@ -48,6 +48,10 @@
       <artifactId>quarkus-amazon-dynamodb</artifactId>
     </dependency>
     <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-arc</artifactId>
     </dependency>
