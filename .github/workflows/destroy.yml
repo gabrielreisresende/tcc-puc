@@ -1,0 +1,140 @@
+# =============================================================================
+# Pipeline de DESTROY — TCC Lambda Benchmark
+# =============================================================================
+#
+# Disparo: MANUAL apenas (workflow_dispatch), nunca automático.
+# Exige que o usuário digite "destroy" no input de confirmação, ou o job
+# falha antes de tocar em qualquer recurso AWS.
+#
+# Apaga TODOS os recursos gerenciados pelo Terraform deste projeto:
+#   - 6 funções Lambda (Go + Quarkus)
+#   - 6 IAM Roles/policies das Lambdas
+#   - 6 CloudWatch Log Groups
+#   - Tabela DynamoDB de benchmark
+#
+# NÃO apaga o backend remoto (bucket S3 do state / tabela DynamoDB de lock),
+# pois esses recursos são provisionados fora do Terraform (veja README).
+#
+# Requer os mesmos secrets/variables do deploy.yml (AWS_ROLE_ARN via OIDC,
+# AWS_REGION, TF_STATE_BUCKET, TF_STATE_DYNAMODB_TABLE, TF_STATE_KEY, etc.).
+# =============================================================================
+
+name: Destroy TCC Lambda Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Digite "destroy" para confirmar a destruição de TODOS os recursos'
+        required: true
+        type: string
+
+env:
+  TF_ROOT: terraform
+  TF_IN_AUTOMATION: "true"
+  LAMBDA_ARCHITECTURE: ${{ vars.LAMBDA_ARCHITECTURE || 'x86_64' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ===========================================================================
+  # JOB 1: guarda de confirmação — nada roda se o texto não bater exatamente.
+  # ===========================================================================
+  check-confirmation:
+    name: Verificar confirmação
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar input de confirmação
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "::error::Confirmação inválida. Digite exatamente 'destroy' para prosseguir."
+            exit 1
+          fi
+          echo "Confirmação recebida. Prosseguindo com o destroy."
+
+  # ===========================================================================
+  # JOB 2: terraform destroy
+  # ===========================================================================
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: check-confirmation
+    # Ambiente com proteção (required reviewers) — recomenda-se configurar
+    # em Settings > Environments > production para exigir aprovação manual
+    # antes deste job rodar.
+    environment: production
+    permissions:
+      id-token: write   # necessário para OIDC
+      contents: read
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # O módulo lambda usa filebase64sha256(var.filename) no source_code_hash.
+      # O Terraform precisa que o arquivo exista no disco para montar o plano
+      # de destroy, mesmo que o conteúdo não importe mais neste ponto.
+      - name: Criar placeholders dos pacotes Lambda
+        run: |
+          mkdir -p build/go/cpu build/go/concurrency build/go/io
+          mkdir -p build/quarkus/cpu build/quarkus/concurrency build/quarkus/io
+          echo "placeholder" > build/go/cpu/bootstrap.zip
+          echo "placeholder" > build/go/concurrency/bootstrap.zip
+          echo "placeholder" > build/go/io/bootstrap.zip
+          echo "placeholder" > build/quarkus/cpu/function.zip
+          echo "placeholder" > build/quarkus/concurrency/function.zip
+          echo "placeholder" > build/quarkus/io/function.zip
+
+      - name: Autenticação AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: github-actions-terraform-destroy-${{ github.run_id }}
+
+      - name: Configuração do Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.*"
+
+      - name: Definir variáveis do Terraform derivadas do ambiente
+        run: |
+          echo "TF_VAR_aws_region=${{ secrets.AWS_REGION }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_environment=${{ vars.TF_VAR_ENVIRONMENT || 'dev' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_project_name=${{ vars.TF_VAR_PROJECT_NAME || 'tcc-lambda-benchmark' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_dynamodb_table_name=${{ vars.TF_VAR_DYNAMODB_TABLE_NAME || 'tcc-benchmark-io' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_lambda_runtime=provided.al2023" >> "$GITHUB_ENV"
+          echo "TF_VAR_log_retention_days=${{ vars.TF_VAR_LOG_RETENTION_DAYS || '7' }}" >> "$GITHUB_ENV"
+          echo 'TF_VAR_lambda_architectures=["'"${LAMBDA_ARCHITECTURE}"'"]' >> "$GITHUB_ENV"
+          cat >> "$GITHUB_ENV" <<'EOF'
+          TF_VAR_lambda_deployment_packages={"go-cpu": "../build/go/cpu/bootstrap.zip", "go-concurrency": "../build/go/concurrency/bootstrap.zip", "go-io": "../build/go/io/bootstrap.zip", "quarkus-cpu": "../build/quarkus/cpu/function.zip", "quarkus-concurrency": "../build/quarkus/concurrency/function.zip", "quarkus-io": "../build/quarkus/io/function.zip"}
+          EOF
+
+      - name: terraform init
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY || 'tcc/lambda-benchmark/terraform.tfstate' }}" \
+            -backend-config="region=${{ secrets.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_STATE_DYNAMODB_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: terraform plan -destroy
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          terraform plan -destroy -input=false -out="${GITHUB_WORKSPACE}/tfplan-destroy"
+          terraform show -no-color "${GITHUB_WORKSPACE}/tfplan-destroy" > "${GITHUB_WORKSPACE}/tfplan-destroy.txt"
+
+      - name: Upload do plano de destroy
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-destroy-plan-${{ github.run_id }}
+          path: |
+            tfplan-destroy
+            tfplan-destroy.txt
+          retention-days: 30
+
+      - name: terraform apply (destroy)
+        working-directory: ${{ env.TF_ROOT }}
+        run: terraform apply -input=false -auto-approve "${GITHUB_WORKSPACE}/tfplan-destroy"
