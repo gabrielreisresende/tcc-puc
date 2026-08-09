@@ -202,6 +202,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate-and-lint, build-go, build-quarkus-native]
     environment: production
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
@@ -243,14 +246,12 @@ jobs:
           name: quarkus-io-${{ github.sha }}
           path: build/quarkus/io
 
-      # Autenticação na AWS utilizando aws-actions/configure-aws-credentials.
-      # As credenciais SEMPRE vêm de GitHub Secrets — nunca hardcoded.
-      - name: Autenticação AWS
+      - name: Autenticação AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: github-actions-terraform-${{ github.run_id }}
 
       - name: Configuração do Terraform
         uses: hashicorp/setup-terraform@v3
