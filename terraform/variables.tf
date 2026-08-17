@@ -10,6 +10,7 @@ variable "aws_region" {
 variable "environment" {
   description = "Ambiente de implantação (ex: dev, staging, prod)."
   type        = string
+  default     = "prd"
 }
 
 variable "project_name" {
@@ -56,6 +57,7 @@ variable "lambda_default_handler" {
 variable "lambda_default_memory_size" {
   description = "Memória RAM padrão (MB) quando não especificada por função."
   type        = number
+  default     = 128
 
   validation {
     condition     = var.lambda_default_memory_size >= 128 && var.lambda_default_memory_size <= 10240
