@@ -89,3 +89,13 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ---------------------------------------------------------------------------
+# Function URL — invocação HTTP direta para testes de carga (k6).
+# ---------------------------------------------------------------------------
+
+variable "enable_function_url" {
+  description = "Cria uma AWS Lambda Function URL pública (AuthType = NONE) para esta função."
+  type        = bool
+  default     = false
+}

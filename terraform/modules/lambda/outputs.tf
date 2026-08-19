@@ -32,3 +32,8 @@ output "log_group_arn" {
   description = "ARN do CloudWatch Log Group."
   value       = aws_cloudwatch_log_group.lambda.arn
 }
+
+output "function_url" {
+  description = "URL de invocação direta da função (null se enable_function_url = false)."
+  value       = try(aws_lambda_function_url.this[0].function_url, null)
+}

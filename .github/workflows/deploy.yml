@@ -35,6 +35,8 @@
 #   TF_VAR_DYNAMODB_TABLE_NAME   — Nome da tabela DynamoDB
 #                                   (padrão: tcc-benchmark-io).
 #   TF_VAR_LOG_RETENTION_DAYS    — Retenção CloudWatch em dias (padrão: 7).
+#   TF_VAR_ENABLE_LAMBDA_FUNCTION_URLS — Habilita Function URL pública para k6
+#                                         (padrão: false).
 #   LAMBDA_ARCHITECTURE          — x86_64 ou arm64 (padrão: x86_64).
 #
 # NENHUMA credencial ou variável sensível deve ser hardcoded neste arquivo.
@@ -274,6 +276,7 @@ jobs:
           echo "TF_VAR_dynamodb_table_name=${{ vars.TF_VAR_DYNAMODB_TABLE_NAME || 'tcc-benchmark-io' }}" >> "$GITHUB_ENV"
           echo "TF_VAR_lambda_runtime=provided.al2023" >> "$GITHUB_ENV"
           echo "TF_VAR_log_retention_days=${{ vars.TF_VAR_LOG_RETENTION_DAYS || '7' }}" >> "$GITHUB_ENV"
+          echo "TF_VAR_enable_lambda_function_urls=${{ vars.TF_VAR_ENABLE_LAMBDA_FUNCTION_URLS || 'false' }}" >> "$GITHUB_ENV"
           echo 'TF_VAR_lambda_architectures=["'"${LAMBDA_ARCHITECTURE}"'"]' >> "$GITHUB_ENV"
           cat >> "$GITHUB_ENV" <<'EOF'
           TF_VAR_lambda_deployment_packages={"go-cpu": "../build/go/cpu/bootstrap.zip", "go-concurrency": "../build/go/concurrency/bootstrap.zip", "go-io": "../build/go/io/bootstrap.zip", "quarkus-cpu": "../build/quarkus/cpu/function.zip", "quarkus-concurrency": "../build/quarkus/concurrency/function.zip", "quarkus-io": "../build/quarkus/io/function.zip"}

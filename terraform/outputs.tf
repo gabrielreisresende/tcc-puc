@@ -52,3 +52,8 @@ output "lambda_log_group_names" {
   description = "Nomes dos CloudWatch Log Groups das Lambdas."
   value       = { for key, fn in module.lambda : key => fn.log_group_name }
 }
+
+output "lambda_function_urls" {
+  description = "URLs de invocação (Function URL) das Lambdas, indexadas por chave (go-cpu, quarkus-io, etc.)."
+  value       = { for key, fn in module.lambda : key => fn.function_url }
+}

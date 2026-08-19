@@ -84,5 +84,7 @@ module "lambda" {
 
   environment_variables = lookup(var.lambda_environment_variables, each.key, {})
 
+  enable_function_url = var.enable_lambda_function_urls
+
   tags = local.common_tags
 }

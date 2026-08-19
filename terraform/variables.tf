@@ -142,3 +142,13 @@ variable "log_retention_days" {
     error_message = "Valor de retenção deve ser um valor suportado pelo CloudWatch Logs."
   }
 }
+
+# ---------------------------------------------------------------------------
+# Function URL — testes de carga (k6)
+# ---------------------------------------------------------------------------
+
+variable "enable_lambda_function_urls" {
+  description = "Habilita Function URL pública (AuthType = NONE) nas 6 Lambdas para uso pelo k6."
+  type        = bool
+  default     = false
+}

@@ -149,3 +149,31 @@ resource "aws_lambda_function" "this" {
     BenchmarkScenario = var.scenario
   })
 }
+
+# ---------------------------------------------------------------------------
+# Function URL — pública, sem autenticação. Habilitar apenas em ambientes de
+# benchmark/teste; a URL fica acessível por qualquer requisição HTTP.
+# ---------------------------------------------------------------------------
+resource "aws_lambda_function_url" "this" {
+  count = var.enable_function_url ? 1 : 0
+
+  function_name      = aws_lambda_function.this.function_name
+  authorization_type = "NONE"
+
+  cors {
+    allow_origins = ["*"]
+    allow_methods = ["POST"]
+    allow_headers = ["content-type"]
+  }
+}
+
+resource "aws_lambda_permission" "function_url_public" {
+  count = var.enable_function_url ? 1 : 0
+
+  statement_id  = "AllowPublicFunctionUrlInvoke"
+  action        = "lambda:InvokeFunctionUrl"
+  function_name = aws_lambda_function.this.function_name
+
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}

@@ -102,6 +102,8 @@ Tracing é obrigatório em todas as Lambdas.
     quando `scenario == "io"`, policy adicional de acesso à tabela DynamoDB
     (`enable_dynamodb_access = true`, controlado automaticamente no `main.tf` raiz).
   - CloudWatch Log Group `/aws/lambda/<function_name>` com retenção parametrizada.
+  - **Function URL** pública (`AuthType = NONE`), opcional via `enable_function_url`
+    — habilitada no root por `enable_lambda_function_urls` para testes k6.
 
 ### 4.3 Variáveis principais (`terraform/variables.tf`)
 - `aws_region`, `environment`, `project_name` (compõem `name_prefix = "${project_name}-${environment}"`, usado no nome de todos os recursos).
@@ -115,6 +117,7 @@ Tracing é obrigatório em todas as Lambdas.
   `quarkus-io`); há uma `validation` no Terraform que **falha o plan** se
   alguma chave estiver faltando.
 - `lambda_environment_variables` — map de map, env vars extras por função.
+- `enable_lambda_function_urls` — habilita Function URL pública (AuthType = NONE) nas 6 Lambdas para k6.
 - `log_retention_days` — validação: só aceita valores suportados pelo CloudWatch (7, 14, 30, etc.)
 
 ### 4.4 Backend remoto
@@ -130,7 +133,7 @@ Tracing é obrigatório em todas as Lambdas.
 Lambda (indexado por chave `go-cpu`, etc.): nome, ARN, invoke_arn, role_arn,
 log_group_name — tudo agregado em maps (`lambda_functions`,
 `lambda_function_names`, `lambda_function_arns`, `lambda_iam_role_arns`,
-`lambda_log_group_names`).
+`lambda_log_group_names`, `lambda_function_urls`).
 
 ---
 
@@ -259,6 +262,7 @@ DynamoDB de benchmark) é criado pelo próprio Terraform.
 | `TF_VAR_PROJECT_NAME` | `tcc-lambda-benchmark` |
 | `TF_VAR_DYNAMODB_TABLE_NAME` | `tcc-benchmark-io` |
 | `TF_VAR_LOG_RETENTION_DAYS` | `7` |
+| `TF_VAR_ENABLE_LAMBDA_FUNCTION_URLS` | `false` |
 
 ### GitHub Environment
 `production` referenciado nos dois workflows — vale configurar *required
@@ -270,6 +274,8 @@ produção (Settings → Environments).
 ## 9. Estado atual (o que já está pronto)
 
 - [x] Infraestrutura Terraform completa (DynamoDB + 6 Lambdas + IAM + CloudWatch + X-Ray).
+- [x] Function URL pública (AuthType = NONE) adicionada ao módulo lambda,
+      habilitável via `enable_lambda_function_urls` — usada pelos testes k6.
 - [x] Pipeline GitHub Actions de deploy (validate/build/plan/apply) completa.
 - [x] Pipeline GitHub Actions de destroy (manual, com confirmação e proteção).
 - [x] Decisão e passo a passo de autenticação via OIDC (troca de access keys).

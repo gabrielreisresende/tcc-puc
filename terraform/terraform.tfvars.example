@@ -51,3 +51,8 @@ lambda_deployment_packages = {
 #     PRIME_LIMIT = "1000000"
 #   }
 # }
+
+# Habilita Function URL pública (sem autenticação) para as 6 Lambdas.
+# Necessário para os testes de carga em k6/. Endpoint fica acessível
+# publicamente enquanto habilitado — desabilite fora de janelas de teste.
+enable_lambda_function_urls = false

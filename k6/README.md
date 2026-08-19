@@ -21,8 +21,31 @@ k6/
 ## Pré-requisitos
 
 - [K6](https://grafana.com/docs/k6/latest/set-up/install-k6/) instalado localmente
-- URLs HTTP públicas das 6 Lambdas (API Gateway ou Lambda Function URL)
-- Lambdas implantadas e acessíveis via `POST` com corpo JSON
+- URLs HTTP públicas das 6 Lambdas via **Lambda Function URL** (Terraform: `enable_lambda_function_urls = true`)
+- Lambdas implantadas e acessíveis via `POST` com corpo JSON — **sem autenticação ou assinatura adicional**
+
+## Obtendo as URLs
+
+Após `terraform apply` com `enable_lambda_function_urls = true`:
+
+```bash
+terraform output -json lambda_function_urls
+```
+
+Copie os valores para as variáveis `URL_GO_CPU`, `URL_GO_PARALLEL`, `URL_GO_IO`,
+`URL_QUARKUS_CPU`, `URL_QUARKUS_PARALLEL`, `URL_QUARKUS_IO` — sem necessidade de
+autenticação ou assinatura adicional nas chamadas.
+
+| Chave Terraform | Variável k6 |
+|---|---|
+| `go-cpu` | `URL_GO_CPU` |
+| `go-concurrency` | `URL_GO_PARALLEL` |
+| `go-io` | `URL_GO_IO` |
+| `quarkus-cpu` | `URL_QUARKUS_CPU` |
+| `quarkus-concurrency` | `URL_QUARKUS_PARALLEL` |
+| `quarkus-io` | `URL_QUARKUS_IO` |
+
+Formato esperado: `https://<url-id>.lambda-url.<region>.on.aws/`
 
 ## Endpoints testados
 
@@ -97,12 +120,12 @@ Cada requisição HTTP recebe tags para facilitar a comparação Go vs Quarkus n
 
 ```bash
 k6 run \
-  -e URL_GO_CPU="https://abc123.execute-api.us-east-1.amazonaws.com/prod/go-cpu" \
-  -e URL_GO_PARALLEL="https://abc123.execute-api.us-east-1.amazonaws.com/prod/go-parallel" \
-  -e URL_GO_IO="https://abc123.execute-api.us-east-1.amazonaws.com/prod/go-io" \
-  -e URL_QUARKUS_CPU="https://abc123.execute-api.us-east-1.amazonaws.com/prod/quarkus-cpu" \
-  -e URL_QUARKUS_PARALLEL="https://abc123.execute-api.us-east-1.amazonaws.com/prod/quarkus-parallel" \
-  -e URL_QUARKUS_IO="https://abc123.execute-api.us-east-1.amazonaws.com/prod/quarkus-io" \
+  -e URL_GO_CPU="https://abc123.lambda-url.us-east-1.on.aws/" \
+  -e URL_GO_PARALLEL="https://def456.lambda-url.us-east-1.on.aws/" \
+  -e URL_GO_IO="https://ghi789.lambda-url.us-east-1.on.aws/" \
+  -e URL_QUARKUS_CPU="https://jkl012.lambda-url.us-east-1.on.aws/" \
+  -e URL_QUARKUS_PARALLEL="https://mno345.lambda-url.us-east-1.on.aws/" \
+  -e URL_QUARKUS_IO="https://pqr678.lambda-url.us-east-1.on.aws/" \
   -e TARGETS=all \
   -e SPIKE_IDLE_DURATION=5m \
   -e SPIKE_SPIKE_DURATION=30s \
@@ -117,12 +140,12 @@ k6 run \
 
 ```bash
 k6 run \
-  -e URL_GO_CPU="https://abc123.execute-api.us-east-1.amazonaws.com/prod/go-cpu" \
-  -e URL_GO_PARALLEL="https://abc123.execute-api.us-east-1.amazonaws.com/prod/go-parallel" \
-  -e URL_GO_IO="https://abc123.execute-api.us-east-1.amazonaws.com/prod/go-io" \
-  -e URL_QUARKUS_CPU="https://abc123.execute-api.us-east-1.amazonaws.com/prod/quarkus-cpu" \
-  -e URL_QUARKUS_PARALLEL="https://abc123.execute-api.us-east-1.amazonaws.com/prod/quarkus-parallel" \
-  -e URL_QUARKUS_IO="https://abc123.execute-api.us-east-1.amazonaws.com/prod/quarkus-io" \
+  -e URL_GO_CPU="https://abc123.lambda-url.us-east-1.on.aws/" \
+  -e URL_GO_PARALLEL="https://def456.lambda-url.us-east-1.on.aws/" \
+  -e URL_GO_IO="https://ghi789.lambda-url.us-east-1.on.aws/" \
+  -e URL_QUARKUS_CPU="https://jkl012.lambda-url.us-east-1.on.aws/" \
+  -e URL_QUARKUS_PARALLEL="https://mno345.lambda-url.us-east-1.on.aws/" \
+  -e URL_QUARKUS_IO="https://pqr678.lambda-url.us-east-1.on.aws/" \
   -e TARGETS=all \
   -e LOAD_RAMP_UP_DURATION=2m \
   -e LOAD_STEADY_DURATION=10m \
@@ -185,5 +208,6 @@ No perfil **Spike**, latências elevadas nos primeiros segundos após cada idle 
 ## Notas
 
 - As Lambdas esperam requisições `POST` com `Content-Type: application/json`.
-- O Terraform atual provisiona as funções Lambda, mas **não inclui API Gateway**. Configure Function URLs ou API Gateway e passe as URLs resultantes nas variáveis `URL_*`.
+- O Terraform provisiona **Lambda Function URL** pública (`AuthType = NONE`) quando `enable_lambda_function_urls = true`. Obtenha as URLs via `terraform output -json lambda_function_urls` e passe-as nas variáveis `URL_*`.
+- Desabilite as Function URLs fora de janelas de teste — os endpoints ficam publicamente acessíveis enquanto habilitados.
 - Ajuste `SPIKE_PEAK_VUS` e `LOAD_STEADY_VUS` conforme os limites de concorrência da sua conta AWS.
