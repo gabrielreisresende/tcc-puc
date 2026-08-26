@@ -1,0 +1,9 @@
+# Trata arquivos binarios de forma explicita para evitar corrupcao por
+# normalizacao de fim de linha (CRLF/LF) ou deteccao incorreta de encoding.
+*.pdf -text binary
+*.zip -text binary
+*.jar -text binary
+*.png -text binary
+*.jpg -text binary
+*.jpeg -text binary
+*.gif -text binary

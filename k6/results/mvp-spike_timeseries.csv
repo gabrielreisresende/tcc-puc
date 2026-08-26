@@ -1,0 +1,17 @@
+target,second_bucket_start_s,request_count
+go-cpu,0.0,4
+go-cpu,1.0,4
+go-cpu,2.0,8
+go-cpu,3.0,10
+go-cpu,4.0,10
+go-cpu,5.0,12
+go-cpu,6.0,11
+go-cpu,7.0,3
+quarkus-cpu,0.0,5
+quarkus-cpu,1.0,4
+quarkus-cpu,2.0,7
+quarkus-cpu,3.0,10
+quarkus-cpu,4.0,10
+quarkus-cpu,5.0,10
+quarkus-cpu,6.0,6
+quarkus-cpu,7.0,1

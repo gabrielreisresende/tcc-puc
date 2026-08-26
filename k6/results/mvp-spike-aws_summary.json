@@ -1,0 +1,154 @@
+{
+  "window": {
+    "start": "2026-08-25T19:39:26-03:00",
+    "end": "2026-08-25T19:46:00-03:00"
+  },
+  "functions": {
+    "tcc-lambda-benchmark-dev-go-cpu": {
+      "log_group": "/aws/lambda/tcc-lambda-benchmark-dev-go-cpu",
+      "total_invocations": 62,
+      "cold_start_count": 2,
+      "cold_start_rate": 0.03225806451612903,
+      "cold_start_init_duration_ms": {
+        "count": 2,
+        "mean": 55.985,
+        "median": 55.985,
+        "stdev": 2.6449999999999996,
+        "min": 53.34,
+        "max": 58.63,
+        "p90": 58.101,
+        "p95": 58.365500000000004,
+        "p99": 58.5771
+      },
+      "cold_start_total_duration_ms": {
+        "count": 2,
+        "mean": 37.64,
+        "median": 37.64,
+        "stdev": 14.26,
+        "min": 23.38,
+        "max": 51.9,
+        "p90": 49.048,
+        "p95": 50.474000000000004,
+        "p99": 51.6148
+      },
+      "warm_start_duration_ms": {
+        "count": 60,
+        "mean": 30.684833333333334,
+        "median": 17.69,
+        "stdev": 24.750889512073883,
+        "min": 2.59,
+        "max": 84.78,
+        "p90": 67.866,
+        "p95": 74.91399999999999,
+        "p99": 81.72969999999998
+      },
+      "billed_duration_ms_all": {
+        "count": 62,
+        "mean": 33.17741935483871,
+        "median": 19.5,
+        "stdev": 26.923142817039807,
+        "min": 3.0,
+        "max": 111.0,
+        "p90": 71.9,
+        "p95": 77.0,
+        "p99": 95.14000000000001
+      },
+      "max_memory_used_mb_all": {
+        "count": 62,
+        "mean": 18.0,
+        "median": 18.0,
+        "stdev": 0.0,
+        "min": 18,
+        "max": 18,
+        "p90": 18.0,
+        "p95": 18.0,
+        "p99": 18.0
+      },
+      "cost_estimate": {
+        "invocations": 62,
+        "total_gb_seconds": 0.257125,
+        "avg_gb_seconds_per_invocation": 0.004147177419354838,
+        "observed_request_cost_usd": 1.2400000000000002e-05,
+        "observed_compute_cost_usd": 4.2854252375e-06,
+        "observed_total_cost_usd": 1.66854252375e-05,
+        "price_per_1m_requests_usd": 0.2,
+        "price_per_gb_second_usd": 1.66667e-05
+      },
+      "xray_trace_count": 62,
+      "xray_initialization_subsegment_ms": null
+    },
+    "tcc-lambda-benchmark-dev-quarkus-cpu": {
+      "log_group": "/aws/lambda/tcc-lambda-benchmark-dev-quarkus-cpu",
+      "total_invocations": 53,
+      "cold_start_count": 2,
+      "cold_start_rate": 0.03773584905660377,
+      "cold_start_init_duration_ms": {
+        "count": 2,
+        "mean": 236.335,
+        "median": 236.335,
+        "stdev": 1.6850000000000023,
+        "min": 234.65,
+        "max": 238.02,
+        "p90": 237.68300000000002,
+        "p95": 237.85150000000002,
+        "p99": 237.9863
+      },
+      "cold_start_total_duration_ms": {
+        "count": 2,
+        "mean": 359.13,
+        "median": 359.13,
+        "stdev": 2.6100000000000136,
+        "min": 356.52,
+        "max": 361.74,
+        "p90": 361.218,
+        "p95": 361.47900000000004,
+        "p99": 361.68780000000004
+      },
+      "warm_start_duration_ms": {
+        "count": 51,
+        "mean": 72.67450980392157,
+        "median": 71.79,
+        "stdev": 7.941055225411868,
+        "min": 48.89,
+        "max": 86.38,
+        "p90": 81.63,
+        "p95": 82.925,
+        "p99": 85.62
+      },
+      "billed_duration_ms_all": {
+        "count": 53,
+        "mean": 92.90566037735849,
+        "median": 73.0,
+        "stdev": 99.93550073713931,
+        "min": 49.0,
+        "max": 600.0,
+        "p90": 83.0,
+        "p95": 85.8,
+        "p99": 595.8399999999999
+      },
+      "max_memory_used_mb_all": {
+        "count": 53,
+        "mean": 48.79245283018868,
+        "median": 49,
+        "stdev": 0.561617964759895,
+        "min": 48,
+        "max": 50,
+        "p90": 49.0,
+        "p95": 50.0,
+        "p99": 50.0
+      },
+      "cost_estimate": {
+        "invocations": 53,
+        "total_gb_seconds": 0.6154999999999999,
+        "avg_gb_seconds_per_invocation": 0.01161320754716981,
+        "observed_request_cost_usd": 1.06e-05,
+        "observed_compute_cost_usd": 1.025835385e-05,
+        "observed_total_cost_usd": 2.085835385e-05,
+        "price_per_1m_requests_usd": 0.2,
+        "price_per_gb_second_usd": 1.66667e-05
+      },
+      "xray_trace_count": 52,
+      "xray_initialization_subsegment_ms": null
+    }
+  }
+}

@@ -1,18 +1,36 @@
-import { getActiveEndpoints, getEndpointByKey } from '../config/env.js';
+import { getActiveEndpoints, getEndpointByKey, parseDurationToSeconds } from '../config/env.js';
 import { invokeEndpoint } from './endpoints.js';
 
 /**
  * Cria um scenario K6 por endpoint ativo, compartilhando o mesmo perfil de carga.
  * Cada scenario injeta TARGET_KEY via env para identificar qual Lambda chamar.
+ *
+ * `STAGGER_TARGETS=true` (variável de ambiente) faz os scenarios rodarem em
+ * SEQUÊNCIA em vez de em paralelo (cada um só começa quando o anterior
+ * termina todos os seus stages). Use isso quando o teto de "Concurrent
+ * Executions" da conta AWS for baixo demais para suportar duas Lambdas
+ * (ex.: go-cpu e quarkus-cpu) recebendo pico de VUs ao mesmo tempo — ver
+ * discover-concurrency.js e k6/analysis/README.md. O trade-off é que as
+ * duas linguagens deixam de ser testadas exatamente na mesma janela de
+ * tempo (ambiente pode variar um pouco entre uma execução e outra), mas
+ * evita que o throttling de uma Lambda contamine os números da outra.
  */
 export function buildEndpointScenarios(stages) {
   const endpoints = getActiveEndpoints();
   const scenarios = {};
+  const stagger = (__ENV.STAGGER_TARGETS || 'false').toLowerCase() === 'true';
+  const totalStageSeconds = stages.reduce(
+    (sum, stage) => sum + parseDurationToSeconds(stage.duration),
+    0,
+  );
 
-  for (const endpoint of endpoints) {
+  endpoints.forEach((endpoint, index) => {
+    const startOffsetSeconds = stagger ? Math.round(index * totalStageSeconds) : 0;
+
     scenarios[endpoint.key] = {
       executor: 'ramping-vus',
-      startTime: '0s',
+      startVUs: 0,
+      startTime: `${startOffsetSeconds}s`,
       gracefulRampDown: __ENV.GRACEFUL_RAMP_DOWN || '30s',
       stages,
       exec: 'runTarget',
@@ -25,7 +43,7 @@ export function buildEndpointScenarios(stages) {
         target: endpoint.key,
       },
     };
-  }
+  });
 
   return scenarios;
 }
