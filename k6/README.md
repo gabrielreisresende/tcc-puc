@@ -65,7 +65,7 @@ Ordem recomendada:
 2. **Aguarde um intervalo de resfriamento** de pelo menos **15–30 minutos sem nenhum tráfego** nas Lambdas antes do próximo teste. O tempo exato de reciclagem de container não é documentado pela AWS, então esse intervalo é uma margem de segurança, não uma garantia.
 3. **Rode o Load depois**, isoladamente.
 4. Nunca dispare os dois scripts em paralelo (mesmo em terminais diferentes) contra o mesmo conjunto de Lambdas.
-5. Anote os horários de início/fim de cada execução — facilita cruzar com CloudWatch/X-Ray depois, caso apareça alguma anomalia.
+5. Anote os horários de início/fim de cada execução — facilita cruzar com o CloudWatch Logs depois, caso apareça alguma anomalia (o X-Ray Active Tracing foi desativado em 27/08/2026, ver `terraform/modules/lambda/main.tf`).
 
 
 

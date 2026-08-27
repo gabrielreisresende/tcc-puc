@@ -158,8 +158,11 @@ execução) — ele não sabe dizer com certeza se uma requisição foi cold ou
 warm start. A AWS sabe: toda invocação que criou um novo ambiente de
 execução grava, no CloudWatch Logs, uma linha `REPORT ... Init Duration: X
 ms`; toda invocação warm não tem esse campo. Esse script consulta o
-CloudWatch Logs Insights (e, opcionalmente, o X-Ray) para extrair essa
-métrica diretamente, sem depender do k6.
+CloudWatch Logs Insights para extrair essa métrica diretamente, sem
+depender do k6. Existe um cruzamento opcional com o X-Ray (`--with-xray`),
+mas o X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 (gerava
+custo e, no MVP rodado, não trouxe nenhum dado utilizável — ver seção 9 do
+`mvp-spike-aws_relatorio.md`), então não há mais motivo para usar essa flag.
 
 **Importante:** este ambiente (assistente) não tem acesso à sua conta AWS
 nem rede liberada para chamar a API da AWS — rode este script no seu
@@ -174,9 +177,11 @@ python3 k6/analysis/aws_cloudwatch_xray_metrics.py \
     --start "2026-08-24T22:11:48-03:00" \
     --end   "2026-08-24T22:27:35-03:00" \
     --region us-east-1 \
-    --out-prefix k6/results/spike-cpu-aws \
-    --with-xray
+    --out-prefix k6/results/spike-cpu-aws
 ```
+
+(Sem `--with-xray` — X-Ray Active Tracing foi desativado nas Lambdas, então
+essa consulta não encontraria mais nenhum trace.)
 
 - Ajuste `--functions` para os nomes reais das suas Lambdas (padrão de
   nomenclatura: `${project_name}-${environment}-<chave>`, ex.
@@ -210,9 +215,9 @@ invocação, com `duration_ms`, `billed_duration_ms`, `memory_size_mb`,
   em agosto/2026; passe `--price-per-1m-requests`/`--price-per-gb-second`
   se quiser atualizar); use `--projected-monthly-invocations N` para
   projetar o custo mensal a partir do perfil observado no teste.
-- se `--with-xray`: `xray_initialization_subsegment_ms`, o detalhamento do
-  segmento "Initialization" do X-Ray para cruzar com o `Init Duration` do
-  CloudWatch.
+- (`--with-xray`, legado): `xray_initialization_subsegment_ms`. Não usar mais
+  — o X-Ray Active Tracing foi desativado nas Lambdas (ver `terraform/modules/lambda/main.tf`),
+  e mesmo quando estava ligado esse campo veio `null` no MVP.
 
 ## 5. Como isso mapeia para o capítulo de Resultados do TCC
 

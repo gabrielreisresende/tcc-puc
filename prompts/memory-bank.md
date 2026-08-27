@@ -20,8 +20,11 @@ linguagens (total de 6 Lambdas):
 2. **Concorrência/Paralelismo** — Goroutines (Go) vs Java Virtual Threads (Quarkus)
 3. **I/O** — leitura e escrita no Amazon DynamoDB
 
-Métrica de interesse principal: **cold start**, por isso AWS X-Ray Active
-Tracing é obrigatório em todas as Lambdas.
+Métrica de interesse principal: **cold start**. Inicialmente o plano previa
+AWS X-Ray Active Tracing obrigatório para medir isso, mas na prática o
+Init Duration (cold start) já vem direto das linhas `REPORT` do CloudWatch
+Logs — o X-Ray não contribuía dado nenhum aos resultados e só gerava custo,
+então foi desativado em 27/08/2026 (`tracing_config { mode = "PassThrough" }`).
 
 ---
 
@@ -32,7 +35,7 @@ Tracing é obrigatório em todas as Lambdas.
 | Linguagem/runtime A | Go 1.22, compilado para runtime customizado `provided.al2023` |
 | Linguagem/runtime B | Quarkus + GraalVM Mandrel (native/AOT), também `provided.al2023` |
 | IaC | Terraform >= 1.5.0 (usando 1.9.x na pipeline) |
-| Cloud | AWS (Lambda, DynamoDB, IAM, CloudWatch, X-Ray, S3 para backend) |
+| Cloud | AWS (Lambda, DynamoDB, IAM, CloudWatch, S3 para backend) |
 | CI/CD | GitHub Actions (migrado de GitLab CI) |
 | Autenticação AWS na CI | OIDC (sem access keys de longa duração) |
 
@@ -97,8 +100,10 @@ Tracing é obrigatório em todas as Lambdas.
   - `handler` = `bootstrap` (padrão, sobrescreve por `lambda_handlers` se necessário).
   - `runtime` = `provided.al2023` (único runtime usado, tanto para Go quanto Quarkus nativo).
   - `architectures` = `["x86_64"]` por padrão (configurável para `arm64`).
-  - `tracing_config { mode = "Active" }` — X-Ray sempre ligado.
-  - IAM Role dedicada por função, com policy base (CloudWatch Logs + X-Ray) e,
+  - `tracing_config { mode = "PassThrough" }` — X-Ray Active Tracing
+    desativado em 27/08/2026 (gerava custo sem contribuir dado usado no TCC;
+    o Init Duration/cold start vem das linhas `REPORT` do CloudWatch Logs).
+  - IAM Role dedicada por função, com policy base (só CloudWatch Logs) e,
     quando `scenario == "io"`, policy adicional de acesso à tabela DynamoDB
     (`enable_dynamodb_access = true`, controlado automaticamente no `main.tf` raiz).
   - CloudWatch Log Group `/aws/lambda/<function_name>` com retenção parametrizada.
@@ -273,7 +278,8 @@ produção (Settings → Environments).
 
 ## 9. Estado atual (o que já está pronto)
 
-- [x] Infraestrutura Terraform completa (DynamoDB + 6 Lambdas + IAM + CloudWatch + X-Ray).
+- [x] Infraestrutura Terraform completa (DynamoDB + 6 Lambdas + IAM + CloudWatch).
+      X-Ray Active Tracing foi desativado em 27/08/2026 (ver seção 1).
 - [x] Function URL pública (AuthType = NONE) adicionada ao módulo lambda,
       habilitável via `enable_lambda_function_urls` — usada pelos testes k6.
 - [x] Pipeline GitHub Actions de deploy (validate/build/plan/apply) completa.

@@ -56,18 +56,6 @@ resource "aws_iam_role_policy" "lambda_base" {
           "${aws_cloudwatch_log_group.lambda.arn}",
           "${aws_cloudwatch_log_group.lambda.arn}:*"
         ]
-      },
-      {
-        Sid    = "XRayTracing"
-        Effect = "Allow"
-        Action = [
-          "xray:PutTraceSegments",
-          "xray:PutTelemetryRecords",
-          "xray:GetSamplingRules",
-          "xray:GetSamplingTargets",
-          "xray:GetSamplingStatisticSummaries"
-        ]
-        Resource = "*"
       }
     ]
   })
@@ -125,8 +113,14 @@ resource "aws_lambda_function" "this" {
 
   architectures = var.architectures
 
+  # X-Ray Active Tracing foi desativado em 27/08/2026: as metricas usadas no
+  # TCC (Init Duration, Billed Duration, memoria) vem das linhas REPORT do
+  # CloudWatch Logs, nao do X-Ray, e o Active Tracing estava gerando custo
+  # (cobranca por trace gravado/recuperado) sem contribuir dado nenhum aos
+  # resultados. "PassThrough" e o modo padrao/gratuito (nao gera nem cobra
+  # traces por conta propria).
   tracing_config {
-    mode = "Active"
+    mode = "PassThrough"
   }
 
   environment {

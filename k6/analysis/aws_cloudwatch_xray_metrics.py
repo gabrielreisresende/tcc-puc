@@ -7,18 +7,24 @@ aws_cloudwatch_xray_metrics.py
 Coleta as metricas "de verdade" (ground truth da AWS) para o intervalo de
 tempo de uma execucao de teste k6: Init Duration (cold start), Duration,
 Billed Duration e Max Memory Used, via AWS CloudWatch Logs Insights sobre as
-linhas REPORT que o runtime da Lambda escreve a cada invocacao. Opcionalmente
-cruza com o AWS X-Ray (GetTraceSummaries + BatchGetTraces) para o
-detalhamento do segmento "Initialization" de cada trace.
+linhas REPORT que o runtime da Lambda escreve a cada invocacao (funciona
+independente de X-Ray). Suporta opcionalmente cruzar com o AWS X-Ray
+(GetTraceSummaries + BatchGetTraces) para o detalhamento do segmento
+"Initialization" de cada trace via --with-xray, mas essa flag esta OBSOLETA:
+o X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 (custava
+dinheiro e, mesmo quando estava ligado, o segmento "Initialization" nunca
+apareceu nos traces do MVP - ver k6/results/mvp-spike-aws_relatorio.md secao
+9). Nao ha mais motivo para usar --with-xray.
 
 Por que isso complementa o k6:
     - O k6 so enxerga o tempo de resposta HTTP fim-a-fim (rede + fila +
       init + execucao). Ele NAO sabe dizer com certeza se uma requisicao
       foi cold ou warm start.
-    - O CloudWatch Logs (linha REPORT ... Init Duration: X ms) e o X-Ray sao
-      a fonte de verdade da AWS: toda invocacao que envolveu inicializar um
-      novo ambiente de execucao tem o campo "Init Duration" preenchido; toda
-      invocacao warm NAO tem esse campo.
+    - O CloudWatch Logs (linha REPORT ... Init Duration: X ms) e a fonte
+      de verdade da AWS: toda invocacao que envolveu inicializar um novo
+      ambiente de execucao tem o campo "Init Duration" preenchido; toda
+      invocacao warm NAO tem esse campo. Isso vem do runtime da Lambda,
+      nao do X-Ray - continua funcionando com tracing desligado.
     - Por isso este script nao tenta casar requisicao-a-requisicao com o k6
       (as Lambdas deste projeto nao devolvem um request id no corpo da
       resposta - ver apps/go/cpu/main.go e CpuLambda.java). Em vez disso,
@@ -31,8 +37,9 @@ Pre-requisitos (rode isto onde voce tem credenciais AWS configuradas -
 tipicamente o seu terminal local, NAO dentro do assistente):
     pip install boto3
     aws configure     # ou AWS_PROFILE / AWS_ACCESS_KEY_ID+SECRET no ambiente
-    # a role/usuario precisa de logs:StartQuery, logs:GetQueryResults,
-    # xray:GetTraceSummaries, xray:BatchGetTraces (somente leitura)
+    # a role/usuario precisa de logs:StartQuery, logs:GetQueryResults (somente leitura)
+    # (xray:GetTraceSummaries/BatchGetTraces so sao necessarias se ainda
+    # usar --with-xray, o que nao e mais recomendado - ver acima)
 
 Uso:
     python3 aws_cloudwatch_xray_metrics.py \
@@ -41,8 +48,7 @@ Uso:
         --end   "2026-08-24T22:27:35-03:00" \
         --region us-east-1 \
         --out-prefix results/spike-cpu-aws \
-        --memory-mb 512 \
-        --with-xray
+        --memory-mb 512
 
 O intervalo --start/--end deve cobrir o t0..t_fim do arquivo k6 correspondente
 (ver campo "t0" em <prefix>_summary.json gerado por extract_k6_metrics.py; para
@@ -205,12 +211,19 @@ def main():
     ap.add_argument("--region", default="us-east-1")
     ap.add_argument("--profile", default=None, help="AWS profile (opcional)")
     ap.add_argument("--out-prefix", required=True)
-    ap.add_argument("--with-xray", action="store_true", help="tambem consulta X-Ray para o segmento Initialization")
+    ap.add_argument("--with-xray", action="store_true",
+                 help="OBSOLETO: X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 ""(gerava custo sem dado util); esta flag so funcionava plenamente antes disso e mesmo assim ""o segmento Initialization nunca foi encontrado (ver mvp-spike-aws_relatorio.md)")
     ap.add_argument("--projected-monthly-invocations", type=int, default=None,
                      help="para projetar custo mensal a partir do perfil observado (ex: 1000000)")
     ap.add_argument("--price-per-1m-requests", type=float, default=DEFAULT_PRICE_PER_1M_REQUESTS_USD)
     ap.add_argument("--price-per-gb-second", type=float, default=DEFAULT_PRICE_PER_GB_SECOND_USD)
     args = ap.parse_args()
+
+    if args.with_xray:
+        print("AVISO: --with-xray e obsoleto - X-Ray Active Tracing foi desativado nas "
+              "Lambdas em 27/08/2026 (custava dinheiro sem gerar dado usado no TCC). Esta "
+              "consulta provavelmente nao vai encontrar traces novos. Ver terraform/modules/"
+              "lambda/main.tf e k6/analysis/README.md.", file=sys.stderr)
 
     try:
         import boto3
