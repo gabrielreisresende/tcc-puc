@@ -4,19 +4,19 @@
 
 export const TARGET_KEYS = [
   'go-cpu',
-  'go-parallel',
+  'go-concurrency',
   'go-io',
   'quarkus-cpu',
-  'quarkus-parallel',
+  'quarkus-concurrency',
   'quarkus-io',
 ];
 
 const URL_ENV_MAP = {
   'go-cpu': 'URL_GO_CPU',
-  'go-parallel': 'URL_GO_PARALLEL',
+  'go-concurrency': 'URL_GO_CONCURRENCY',
   'go-io': 'URL_GO_IO',
   'quarkus-cpu': 'URL_QUARKUS_CPU',
-  'quarkus-parallel': 'URL_QUARKUS_PARALLEL',
+  'quarkus-concurrency': 'URL_QUARKUS_CONCURRENCY',
   'quarkus-io': 'URL_QUARKUS_IO',
 };
 
@@ -82,8 +82,8 @@ export function getEndpointMetadata(key) {
   let route = 'io';
   if (key.endsWith('-cpu')) {
     route = 'cpu';
-  } else if (key.endsWith('-parallel')) {
-    route = 'parallel';
+  } else if (key.endsWith('-concurrency')) {
+    route = 'concurrency';
   }
 
   return { language, route };
@@ -140,7 +140,7 @@ export function getActiveEndpoints() {
 export function getPayloadConfig() {
   return {
     cpuNumber: parseIntEnv('PAYLOAD_CPU_NUMBER', 999999999989),
-    parallelTasks: parseIntEnv('PAYLOAD_PARALLEL_TASKS', 5000),
+    concurrencyTasks: parseIntEnv('PAYLOAD_CONCURRENCY_TASKS', 5000),
   };
 }
 

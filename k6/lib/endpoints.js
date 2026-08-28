@@ -10,8 +10,8 @@ function buildRequestBody(route) {
   switch (route) {
     case 'cpu':
       return JSON.stringify({ number: payload.cpuNumber });
-    case 'parallel':
-      return JSON.stringify({ tasks: payload.parallelTasks });
+    case 'concurrency':
+      return JSON.stringify({ tasks: payload.concurrencyTasks });
     case 'io':
       return JSON.stringify({});
     default:

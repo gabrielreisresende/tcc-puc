@@ -48,14 +48,14 @@ e registra em que degrau começam a aparecer 429:
 cd k6
 k6 run -e URL_GO_CPU="<sua-url>" -e TARGETS=go-cpu \
     -e DISCOVERY_VU_STEPS=1,2,4,8,16,32,64 -e DISCOVERY_STEP_DURATION=15s \
-    --out json=results/discovery-go-cpu.json \
+    --out json=results/mvps/discovery-go-cpu.json \
     discover-concurrency.js
 ```
 
 Depois analise:
 
 ```bash
-python3 analysis/analyze_discovery.py results/discovery-go-cpu.json \
+python3 analysis/analyze_discovery.py results/mvps/discovery-go-cpu.json \
     --steps 1,2,4,8,16,32,64 --step-duration 15s
 ```
 
@@ -100,7 +100,7 @@ k6 run \
   -e SPIKE_SPIKE_DURATION=15s \
   -e SPIKE_PEAK_VUS=8 \
   -e SPIKE_CYCLES=5 \
-  --out json=results/spike-cpu-v2.json \
+  --out json=results/mvps/spike/spike-cpu-v2.json \
   spike.js
 ```
 
@@ -125,8 +125,10 @@ local** (não há limite de tempo lá, ao contrário do ambiente do assistente):
 
 ```bash
 cd k6
-python3 analysis/extract_k6_metrics.py results/spike-cpu.json \
-    --out-prefix results/spike-cpu \
+# exemplo de rodada definitiva (um target por vez - ver k6/README.md),
+# arquivo salvo em results/<perfil>/<linguagem>/<rota>/:
+python3 analysis/extract_k6_metrics.py results/spike/go/cpu/run1.json \
+    --out-prefix results/spike/go/cpu/run1 \
     --idle 5m --spike-dur 20s --cycles 2 --cold-window 2.0
 ```
 
@@ -162,7 +164,7 @@ CloudWatch Logs Insights para extrair essa métrica diretamente, sem
 depender do k6. Existe um cruzamento opcional com o X-Ray (`--with-xray`),
 mas o X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 (gerava
 custo e, no MVP rodado, não trouxe nenhum dado utilizável — ver seção 9 do
-`mvp-spike-aws_relatorio.md`), então não há mais motivo para usar essa flag.
+`results/mvps/spike/mvp-spike-aws_relatorio.md`), então não há mais motivo para usar essa flag.
 
 **Importante:** este ambiente (assistente) não tem acesso à sua conta AWS
 nem rede liberada para chamar a API da AWS — rode este script no seu
@@ -173,11 +175,11 @@ configurados:
 pip install boto3
 
 python3 k6/analysis/aws_cloudwatch_xray_metrics.py \
-    --functions tcc-lambda-benchmark-dev-go-cpu tcc-lambda-benchmark-dev-quarkus-cpu \
+    --functions tcc-lambda-benchmark-dev-go-cpu \
     --start "2026-08-24T22:11:48-03:00" \
     --end   "2026-08-24T22:27:35-03:00" \
     --region us-east-1 \
-    --out-prefix k6/results/spike-cpu-aws
+    --out-prefix k6/results/spike/go/cpu/run1-aws
 ```
 
 (Sem `--with-xray` — X-Ray Active Tracing foi desativado nas Lambdas, então
@@ -189,7 +191,7 @@ essa consulta não encontraria mais nenhum trace.)
   `terraform output -json lambda_function_names` dentro de `terraform/`).
 - `--start`/`--end`: use o campo `"t0"` do `<prefix>_summary.json` gerado
   pelo `extract_k6_metrics.py` para o início, e o timestamp da última linha
-  do arquivo k6 (`tail -c 2000 results/spike-cpu.json`) para o fim. Dê uma
+  do arquivo k6 (`tail -c 2000 results/spike/go/cpu/run1.json`) para o fim. Dê uma
   folga de alguns segundos para os dois lados.
 - Sem correlação requisição-a-requisição com o k6: as Lambdas deste projeto
   não devolvem um request id no corpo da resposta (conferido em

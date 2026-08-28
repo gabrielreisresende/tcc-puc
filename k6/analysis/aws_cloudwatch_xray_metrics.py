@@ -13,7 +13,7 @@ independente de X-Ray). Suporta opcionalmente cruzar com o AWS X-Ray
 "Initialization" de cada trace via --with-xray, mas essa flag esta OBSOLETA:
 o X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 (custava
 dinheiro e, mesmo quando estava ligado, o segmento "Initialization" nunca
-apareceu nos traces do MVP - ver k6/results/mvp-spike-aws_relatorio.md secao
+apareceu nos traces do MVP - ver k6/results/mvps/spike/mvp-spike-aws_relatorio.md secao
 9). Nao ha mais motivo para usar --with-xray.
 
 Por que isso complementa o k6:
@@ -41,18 +41,18 @@ tipicamente o seu terminal local, NAO dentro do assistente):
     # (xray:GetTraceSummaries/BatchGetTraces so sao necessarias se ainda
     # usar --with-xray, o que nao e mais recomendado - ver acima)
 
-Uso:
+Uso (rodada definitiva, um target por vez - ver k6/README.md):
     python3 aws_cloudwatch_xray_metrics.py \
-        --functions tcc-lambda-benchmark-dev-go-cpu tcc-lambda-benchmark-dev-quarkus-cpu \
+        --functions tcc-lambda-benchmark-dev-go-cpu \
         --start "2026-08-24T22:11:48-03:00" \
         --end   "2026-08-24T22:27:35-03:00" \
         --region us-east-1 \
-        --out-prefix results/spike-cpu-aws \
-        --memory-mb 512
+        --out-prefix results/spike/go/cpu/run1-aws \
+        --memory-mb 128
 
 O intervalo --start/--end deve cobrir o t0..t_fim do arquivo k6 correspondente
 (ver campo "t0" em <prefix>_summary.json gerado por extract_k6_metrics.py; para
-o fim, use o ultimo timestamp do arquivo -- ex.: `tail -c 2000 results/spike-cpu.json`).
+o fim, use o ultimo timestamp do arquivo -- ex.: `tail -c 2000 results/spike/go/cpu/run1.json`).
 Vale dar uma folga de alguns segundos para cada lado.
 
 Gera, por funcao:
@@ -212,7 +212,7 @@ def main():
     ap.add_argument("--profile", default=None, help="AWS profile (opcional)")
     ap.add_argument("--out-prefix", required=True)
     ap.add_argument("--with-xray", action="store_true",
-                 help="OBSOLETO: X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 ""(gerava custo sem dado util); esta flag so funcionava plenamente antes disso e mesmo assim ""o segmento Initialization nunca foi encontrado (ver mvp-spike-aws_relatorio.md)")
+                 help="OBSOLETO: X-Ray Active Tracing foi desativado nas Lambdas em 27/08/2026 ""(gerava custo sem dado util); esta flag so funcionava plenamente antes disso e mesmo assim ""o segmento Initialization nunca foi encontrado (ver results/mvps/spike/mvp-spike-aws_relatorio.md)")
     ap.add_argument("--projected-monthly-invocations", type=int, default=None,
                      help="para projetar custo mensal a partir do perfil observado (ex: 1000000)")
     ap.add_argument("--price-per-1m-requests", type=float, default=DEFAULT_PRICE_PER_1M_REQUESTS_USD)

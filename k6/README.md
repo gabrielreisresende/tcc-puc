@@ -73,6 +73,8 @@ Ordem recomendada:
 
 Os dois comandos abaixo são **independentes** — rode um, espere o intervalo de resfriamento, depois rode o outro. Cada um já cobre as 6 Lambdas de uma vez via `TARGETS=all` (um scenario K6 paralelo por Lambda, dentro do mesmo perfil).
 
+> Rodadas com `TARGETS=all` (ou com mais de um target) misturam Go e Quarkus no mesmo arquivo de saída — úteis para smoke test/validação do pipeline (guarde os resultados em `results/mvps/`). Para a coleta **definitiva** do TCC, rode **um target por vez** (seção [Rodando apenas uma Lambda específica](#rodando-apenas-uma-lambda-específica-opcional) abaixo) e salve cada resultado já na pasta `results/<perfil>/<linguagem>/<rota>/` correspondente — ver [Organização dos resultados](#organização-dos-resultados).
+
 ### 1) Rodar todos os Spikes (6 Lambdas)
 
 ```bash
@@ -90,7 +92,7 @@ k6 run \
   -e SPIKE_CYCLES=3 \
   -e PAYLOAD_CPU_NUMBER=999999999989 \
   -e PAYLOAD_CONCURRENCY_TASKS=5000 \
-  --out json=results/spike-all.json \
+  --out json=results/mvps/spike/spike-all.json \
   spike.js
 ```
 
@@ -104,7 +106,7 @@ k6 run \
   -e SPIKE_PEAK_VUS=30 \
   -e SPIKE_CYCLES=2 \
   -e PAYLOAD_CPU_NUMBER=999999999989 \
-  --out json=results/spike-cpu.json \
+  --out json=results/mvps/spike/spike-cpu.json \
   spike.js
 ```
 
@@ -127,15 +129,15 @@ k6 run \
   -e LOAD_STEADY_DURATION=10m \
   -e LOAD_RAMP_DOWN_DURATION=2m \
   -e LOAD_STEADY_VUS=50 \
-  --out json=results/load-all.json \
+  --out json=results/mvps/load/load-all.json \
   load.js
 ```
 
 
 
-### Rodando apenas uma Lambda específica (opcional)
+### Rodando apenas uma Lambda específica (recomendado para a coleta definitiva)
 
-Para isolar um único cenário (útil para debug ou re-teste pontual), use `TARGETS` com uma única chave:
+Para isolar um único cenário (linguagem + rota), use `TARGETS` com uma única chave e aponte `--out` para a pasta `results/<perfil>/<linguagem>/<rota>/` correspondente:
 
 ```bash
 k6 run \
@@ -145,6 +147,7 @@ k6 run \
   -e SPIKE_SPIKE_DURATION=30s \
   -e SPIKE_PEAK_VUS=100 \
   -e SPIKE_CYCLES=3 \
+  --out json=results/spike/go/cpu/run1.json \
   spike.js
 ```
 
@@ -177,15 +180,36 @@ k6 run \
 
 
 
+## Organização dos resultados
+
+Os resultados ficam em `k6/results/`, organizados por perfil, linguagem e rota (a mesma divisão dos endpoints/Lambdas testados):
+
+```
+k6/results/
+├── mvps/                  # rodadas de validação/calibração do pipeline (não são dado final do TCC)
+│   ├── spike/
+│   └── load/
+├── spike/
+│   ├── go/{cpu,io,concurrency}/
+│   └── quarkus/{cpu,io,concurrency}/
+└── load/
+    ├── go/{cpu,io,concurrency}/
+    └── quarkus/{cpu,io,concurrency}/
+```
+
+Rodadas exploratórias/combinadas (`TARGETS=all` ou mais de um target, `discover-concurrency.js`) vão em `results/mvps/`. Rodadas definitivas — sempre um único target por execução (ver seção acima) — vão em `results/<perfil>/<linguagem>/<rota>/`.
+
 ## Exportar resultados
 
 ```bash
-# JSON para pós-processamento
-k6 run --out json=results/spike.json spike.js
+# JSON para pós-processamento (um target por vez, ex.: perfil spike, go-cpu)
+k6 run -e TARGETS=go-cpu --out json=results/spike/go/cpu/run1.json spike.js
 
-# CSV
-k6 run --out csv=results/spike.csv spike.js
+# CSV (ex.: perfil load, quarkus-io)
+k6 run -e TARGETS=quarkus-io --out csv=results/load/quarkus/io/run1.csv load.js
 ```
+
+Numere o sufixo (`run1`, `run2`, ...) a cada repetição para não sobrescrever execuções anteriores — o artigo recomenda múltiplas repetições por cenário (ver [Notas](#notas)).
 
 
 
